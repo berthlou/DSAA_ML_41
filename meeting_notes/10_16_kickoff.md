@@ -7,6 +7,7 @@
 - João
 - Louis
 - Gonçalo
+- Rita
 
 ## Agenda:
 1. Distribution of Tasks
