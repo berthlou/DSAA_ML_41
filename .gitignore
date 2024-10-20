@@ -1,0 +1,5 @@
+# Ignore the /data/ folder in the root directory
+/data/
+
+# Optional: Ignore Jupyter notebook checkpoints
+**/.ipynb_checkpoints/
