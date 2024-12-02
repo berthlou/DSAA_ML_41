@@ -209,11 +209,12 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
 
     # Creating an ordinal variable
     categorical_ordinal_encode(X_train, X_val)
+    categorical_ordinal_encode(X_train, test)
 
     # Categorical Prop Encoding
     for cat_feature in cat_features:
         categorical_prop_encode(X_train, X_val, cat_feature)
-
+        categorical_prop_encode(X_train, test, cat_feature)
     
     # Fitting the model
     model.fit(X_train, y_train)
