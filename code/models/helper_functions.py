@@ -1,4 +1,12 @@
 # Imports
+from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import f1_score
+import pandas as pd
+import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score
+from xgboost import XGBRegressor, XGBClassifier
+from statistics import mean
 
 
 # Missing values imputer function with a given algorithm
@@ -39,10 +47,9 @@ def handle_outliers(data, target_column):
         # Remove outliers (entire rows)
 
 # Scaling function
-def scale_numerical(X_train, X_val, scaler):
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
-    return X_train_scaled, X_val_scaled
+def scale_numerical(column,X_train, X_val, scaler):
+    X_train[column] = scaler.fit_transform(X_train[column], copy = False)
+    X_val[column] = scaler.transform(X_val[column], copy = False)
 
 # Ordinal encoder function
 def categorical_ordinal_encode(X_train, X_val, features):
@@ -72,11 +79,12 @@ def categorical_prop_encode(X_train, X_val, features):
 
     # Fit model on train
     # Predict valid
-def cv_scores(model, X, y, num_inputing_algorithm= XGBRegressor() , cat_inputing_algorithm = XGBClassifier()):
-    # Takes as argument the model used, the predictors and the target. Splits the data using StratifiedKFold, and
-    # trains model using X and y. Then it returns the results obtained from the stratified cross validation'''
+def cv_scores(model, X, y, num_imputing_algorithm= XGBRegressor() , cat_imputing_algorithm = XGBClassifier(), scalling_outlier = True, scaler = MinMaxScaler()):
+    ''' Takes as argument the model used, the predictors and the target, the models used for imputing numerical and categorical 
+      features, if any scaling and outlier removed should be performed, and what scaling method should be used.
+     Then it returns the results obtained from the stratified cross validation for the given model'''
     
-    skf = KFold(n_splits=5)
+    skf = StratifiedKFold(n_splits=5)
     
     # Generating the lists to store our results
     precision_scores_train = []
@@ -93,27 +101,42 @@ def cv_scores(model, X, y, num_inputing_algorithm= XGBRegressor() , cat_inputing
         X_train, X_val = X.iloc[train_index], X.iloc[test_index]
         y_train, y_val = y.iloc[train_index], y.iloc[test_index]
 
+
         #Filling num missing values
-        for column in selected_num_features:
-            impute_missing_values(X_train, column, num_inputing_algorithm)
-            impute_missing_values(X_val, column, num_inputing_algorithm)
+        for column in num_features:
+            impute_missing_values(X_train, column, num_imputing_algorithm)
+            impute_missing_values(X_val, column, num_imputing_algorithm)
 
         #Filling cat missing values
-        impute_missing_values(X_train, "Alternative Dispute Resolution", cat_inputing_algorithm)
-        impute_missing_values(X_val, "Alternative Dispute Resolution", cat_inputing_algorithm)
-        
+        impute_missing_values(X_train, "Alternative Dispute Resolution", cat_imputing_algorithm)
+        impute_missing_values(X_val, "Alternative Dispute Resolution", cat_imputing_algorithm)
+
         # Removing inconsistencies on the train
         inconsistent = X_train[(X_train['Age at Injury'] > 80) | (X_train["Age at Injury"] < 16)].index
         X_train.drop(inconsistent, inplace=True)
         y_train.drop(inconsistent, inplace=True)
 
+        #Performing scaling and outlier treatment dependent on the boolean
+        if scalling_outlier:
+            for column in num_features:
+                handle_outliers(X_train, column)
+                scale_numerical(column,X_train, X_val, scaler)
+
+        # Creating an ordinal variable
+        categorical_ordinal_encode(X_train, X_val)
+
+        # Categorical Prop Encoding
+        for cat_feature in cat_features:
+            categorical_prop_encode(X_train, X_val, cat_feature)
 
         # Training the classification model
         model.fit(X_train, y_train)
+
         
         # Making the predictions for the training and validation data
         pred_train = model.predict(X_train)
         pred_val = model.predict(X_val)
+    
         
         # Calculating and storing the scores
         precision_scores_train.append(precision_score(y_train, pred_train, average='macro'))
@@ -131,6 +154,7 @@ def cv_scores(model, X, y, num_inputing_algorithm= XGBRegressor() , cat_inputing
     f1_scores_train.append(mean(f1_scores_train))
     f1_scores_val.append(mean(f1_scores_val))
 
+
     # Storing the results in a dataframe
     model_results = pd.DataFrame(data={
         'Train_precision': precision_scores_train,
@@ -143,7 +167,17 @@ def cv_scores(model, X, y, num_inputing_algorithm= XGBRegressor() , cat_inputing
     
     return model_results
 
-def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() , cat_inputing_algorithm = XGBClassifier()):
+
+
+
+
+
+
+
+
+
+
+def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() , cat_inputing_algorithm = XGBClassifier(),scalling_outlier = True, scaler = MinMaxScaler()):
 
     X_train, X_val,y_train, y_val = train_test_split(X,y,
                                                 train_size = 0.8, 
@@ -152,7 +186,7 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
 
     # Missing value inputation
     #Filling num missing values
-    for column in selected_num_features:
+    for column in num_features:
         impute_missing_values(X_train, column, num_inputing_algorithm)
         impute_missing_values(X_val, column, num_inputing_algorithm)
         impute_missing_values(test, column, num_inputing_algorithm)
@@ -166,6 +200,20 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
     inconsistent = X_train[(X_train['Age at Injury'] > 80) | (X_train["Age at Injury"] < 16)].index
     X_train.drop(inconsistent, inplace=True)
     y_train.drop(inconsistent, inplace=True)
+
+    #Performing scaling and outlier treatment dependent on the boolean
+    if scalling_outlier:
+        for column in num_features:
+            handle_outliers(X_train, column)
+            scale_numerical(column,X_train, X_val, scaler)
+
+    # Creating an ordinal variable
+    categorical_ordinal_encode(X_train, X_val)
+
+    # Categorical Prop Encoding
+    for cat_feature in cat_features:
+        categorical_prop_encode(X_train, X_val, cat_feature)
+
     
     # Fitting the model
     model.fit(X_train, y_train)
@@ -186,3 +234,6 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
     }, index=data_test.index)
     
     return submission_df
+
+
+    
