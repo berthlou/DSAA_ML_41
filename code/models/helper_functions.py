@@ -39,12 +39,24 @@ def impute_missing_values(data, target_column, algorithm):
 
 # Outlier removal function
 def handle_outliers(data, target_column):
-    print("Hello")
-    # Detect outliers
-    # If outliers > 5%
-        # Cap outliers
-    # If outliers < 5%
-        # Remove outliers (entire rows)
+    lower_quantile = 0.25
+    upper_quantile = 0.75
+    multiplier = 1.5
+    # Calculate Q1, Q3, and IQR
+    Q1 = data[target_column].quantile(lower_quantile)
+    Q3 = data[target_column].quantile(upper_quantile)
+    IQR = Q3 - Q1
+    
+    # Define outlier bounds
+    lower_bound = Q1 - multiplier * IQR
+    upper_bound = Q3 + multiplier * IQR
+    
+    # Replace outliers with NaN
+    data[target_column] = data[target_column].apply(
+        lambda x: np.nan if x < lower_bound or x > upper_bound else x
+    )
+    
+    return data
 
 # Scaling function
 def scale_numerical(column,X_train, X_val, scaler):
@@ -183,6 +195,11 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
                                                 train_size = 0.8, 
                                                 shuffle = True, 
                                                 stratify = y)
+    #Performing scaling and outlier treatment dependent on the boolean
+    if scalling_outlier:
+        for column in num_features:
+            handle_outliers(X_train, column)
+            scale_numerical(column,X_train, X_val, scaler)
 
     # Missing value inputation
     #Filling num missing values
@@ -200,12 +217,6 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
     inconsistent = X_train[(X_train['Age at Injury'] > 80) | (X_train["Age at Injury"] < 16)].index
     X_train.drop(inconsistent, inplace=True)
     y_train.drop(inconsistent, inplace=True)
-
-    #Performing scaling and outlier treatment dependent on the boolean
-    if scalling_outlier:
-        for column in num_features:
-            handle_outliers(X_train, column)
-            scale_numerical(column,X_train, X_val, scaler)
 
     # Creating an ordinal variable
     categorical_ordinal_encode(X_train, X_val)
