@@ -59,22 +59,24 @@ def handle_outliers(data, target_column):
     return data
 
 # Scaling function
-def scale_numerical(column,X_train, X_val, scaler):
-    X_train[column] = scaler.fit_transform(X_train[column], copy = False)
-    X_val[column] = scaler.transform(X_val[column], copy = False)
+def scale_numerical(column, X_train, X_val, scaler):
+    X_train[column] = scaler.fit_transform(X_train[column])
+    X_val[column] = scaler.transform(X_val[column])
 
 # Ordinal encoder function
 def categorical_ordinal_encode(X_train, X_val, features):
+    encoder = OrdinalEncoder()
     for col in features:
-        print("placeholder")
-        # Todo
+        X_train[col] = encoder.fit_transform(X_train[[col]])
+        X_val[col] = encoder.transform(X_val[[col]])
 
 # Categorical encoder function
 def categorical_prop_encode(X_train, X_val, features):
     for col in features:
         proportion = X_train[col].value_counts(normalize = True)  # Get the porportion of each category
         X_train[col] = X_train[col].map(proportion)  # Map the porportions in the column
-        X_val[col] = X_val[col].map(proportion) #Do the same for the valid dataset
+        X_val[col] = X_val[col].map(proportion) # Do the same for the valid dataset
+        X_val[col] = X_val[col].fillna(0)  # Handle categories in X_val not seen in X_train with 0
 
 # Structure TODO:
 # SKFold Loop
