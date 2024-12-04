@@ -7,7 +7,8 @@ import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score
 from xgboost import XGBRegressor, XGBClassifier
 from statistics import mean
-
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder
 
 # Missing values imputer function with a given algorithm
 def impute_missing_values(data, target_column, algorithm):
@@ -60,15 +61,29 @@ def handle_outliers(data, target_column):
 
 # Scaling function
 def scale_numerical(column, X_train, X_val, scaler):
-    X_train[column] = scaler.fit_transform(X_train[column])
-    X_val[column] = scaler.transform(X_val[column])
+    # Ajusta a escala da coluna numérica convertendo-a para 2D
+    X_train[column] = pd.DataFrame(scaler.fit_transform(X_train[[column]]))
+    X_val[column] = pd.DataFrame(scaler.transform(X_val[[column]]))
+
 
 # Ordinal encoder function
-def categorical_ordinal_encode(X_train, X_val, features):
-    encoder = OrdinalEncoder()
-    for col in features:
-        X_train[col] = encoder.fit_transform(X_train[[col]])
-        X_val[col] = encoder.transform(X_val[[col]])
+def categorical_ordinal_encode(X_train, X_val,column):
+    # Define a function to categorize each carrier based on its claim count
+    count = X_train['Carrier Name'].value_counts()
+    def categorize_claims(count):
+        if count >= 40000:
+            return 2
+        elif 4000 <= count < 40000:
+            return 1
+        else:
+            return 0
+
+    # Apply the categorization to create a mapping dictionary
+    carrier_category_map = count.apply(categorize_claims)
+
+    # Map the `Carrier Name` to the new `Carrier Claim Category`
+    X_train['Carrier Claim Category'] = X_train['Carrier Name'].map(carrier_category_map)
+
 
 # Categorical encoder function
 def categorical_prop_encode(X_train, X_val, features):
@@ -93,7 +108,7 @@ def categorical_prop_encode(X_train, X_val, features):
 
     # Fit model on train
     # Predict valid
-def cv_scores(model, X, y, num_imputing_algorithm= XGBRegressor() , cat_imputing_algorithm = XGBClassifier(), scalling_outlier = True, scaler = MinMaxScaler()):
+def cv_scores(model, X, y, num_features, cat_features, num_imputing_algorithm= XGBRegressor() , cat_imputing_algorithm = XGBClassifier(), scalling_outlier = True, scaler = MinMaxScaler()):
     ''' Takes as argument the model used, the predictors and the target, the models used for imputing numerical and categorical 
       features, if any scaling and outlier removed should be performed, and what scaling method should be used.
      Then it returns the results obtained from the stratified cross validation for the given model'''
@@ -136,8 +151,8 @@ def cv_scores(model, X, y, num_imputing_algorithm= XGBRegressor() , cat_imputing
                 handle_outliers(X_train, column)
                 scale_numerical(column,X_train, X_val, scaler)
 
-        # Creating an ordinal variable
-        categorical_ordinal_encode(X_train, X_val)
+        """# Creating an ordinal variable
+        categorical_ordinal_encode(X_train, X_val, num_features)"""
 
         # Categorical Prop Encoding
         for cat_feature in cat_features:
@@ -182,14 +197,7 @@ def cv_scores(model, X, y, num_imputing_algorithm= XGBRegressor() , cat_imputing
     return model_results
 
 
-
-
-
-
-
-
-
-
+le = LabelEncoder()
 
 def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() , cat_inputing_algorithm = XGBClassifier(),scalling_outlier = True, scaler = MinMaxScaler()):
 
@@ -221,8 +229,9 @@ def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() ,
     y_train.drop(inconsistent, inplace=True)
 
     # Creating an ordinal variable
-    categorical_ordinal_encode(X_train, X_val)
-    categorical_ordinal_encode(X_train, test)
+    for num_feature in num_features:
+        categorical_ordinal_encode(X_train, X_val,num_feature)
+        categorical_ordinal_encode(X_train, test,num_feature)
 
     # Categorical Prop Encoding
     for cat_feature in cat_features:
