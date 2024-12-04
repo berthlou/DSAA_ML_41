@@ -1,4 +1,4 @@
-# Imports
+## Imports
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import f1_score
@@ -12,31 +12,80 @@ from sklearn.preprocessing import LabelEncoder
 
 # Missing values imputer function with a given algorithm
 def impute_missing_values(data, target_column, algorithm):
-    
     # Separating the missing values from the non missing values
     available_data = data[data[target_column].notna()]
     missing_data = data[data[target_column].isna()]
 
-    # Making sure there is enough data to input 
+    # Diagnóstico inicial
+    print(f"\nImputando valores para coluna: {target_column}")
+    print(f"Linhas disponíveis para treino: {len(available_data)}")
+    print(f"Linhas com valores ausentes: {len(missing_data)}")
+
+    # Verificar se há dados suficientes para imputação
     if len(available_data) == 0 or len(missing_data) == 0:
+        print(f"Sem dados suficientes para imputar valores na coluna {target_column}")
         return data
 
-    # Separating the target column from the rest 
+    # Separating the target column from the rest
     X_available = available_data.drop(columns=[target_column])
     y_available = available_data[target_column]
+
+    # Garantir consistência entre colunas
+    X_available = X_available.select_dtypes(include=["number"])
+    X_missing = missing_data.drop(columns=[target_column]).select_dtypes(include=["number"])
+    common_columns = X_available.columns.intersection(X_missing.columns)
+    X_available = X_available[common_columns]
+    X_missing = X_missing[common_columns]
+
+    # Verificar se ainda há colunas suficientes após alinhamento
+    if X_available.shape[1] == 0:
+        print(f"Sem colunas disponíveis para imputar na coluna {target_column}")
+        return data
 
     # Training the model with the available data
     model = algorithm
     model.fit(X_available, y_available)
 
     # Prediting the missing values
-    X_missing = missing_data.drop(columns=[target_column])
     predicted_values = model.predict(X_missing)
 
     # Inputing the missing values with the predictions
     data.loc[data[target_column].isna(), target_column] = predicted_values
 
     return data
+
+def impute_missing_values_with_fallback(data, target_column, algorithm):
+    available_data = data[data[target_column].notna()]
+    missing_data = data[data[target_column].isna()]
+
+    if len(available_data) == 0 or len(missing_data) == 0:
+        print(f"Sem dados suficientes para imputar a coluna '{target_column}', usando mediana.")
+        data[target_column].fillna(data[target_column].median(), inplace=True)
+        return data
+
+    X_available = available_data.drop(columns=[target_column]).select_dtypes(include=["number"])
+    y_available = available_data[target_column]
+    X_missing = missing_data.drop(columns=[target_column]).select_dtypes(include=["number"])
+
+    common_columns = X_available.columns.intersection(X_missing.columns)
+    X_available = X_available[common_columns]
+    X_missing = X_missing[common_columns]
+
+    if X_available.shape[1] == 0 or X_missing.shape[1] == 0:
+        print(f"Sem colunas suficientes para imputar '{target_column}', usando mediana.")
+        data[target_column].fillna(data[target_column].median(), inplace=True)
+        return data
+
+    model = algorithm
+    model.fit(X_available, y_available)
+    predicted_values = model.predict(X_missing)
+    data.loc[data[target_column].isna(), target_column] = predicted_values
+    return data
+
+def check_missing_values(data, step_name):
+    print(f"\n{step_name}: Valores ausentes restantes:")
+    print(data.isnull().sum()[data.isnull().sum() > 0])
+
 
 # Outlier removal function
 def handle_outliers(data, target_column):
@@ -199,54 +248,52 @@ def cv_scores(model, X, y, num_features, cat_features, num_imputing_algorithm= X
 
 le = LabelEncoder()
 
-def test_prediction(model, X, y , test, num_inputing_algorithm= XGBRegressor() , cat_inputing_algorithm = XGBClassifier(),scalling_outlier = True, scaler = MinMaxScaler()):
-
-    X_train, X_val,y_train, y_val = train_test_split(X,y,
-                                                train_size = 0.8, 
-                                                shuffle = True, 
-                                                stratify = y)
-    #Performing scaling and outlier treatment dependent on the boolean
-    if scalling_outlier:
-        for column in num_features:
-            handle_outliers(X_train, column)
-            scale_numerical(column,X_train, X_val, scaler)
-
-    # Missing value inputation
-    #Filling num missing values
+def test_prediction(model, X, y, num_features, cat_features, data_test, 
+                    num_inputing_algorithm=XGBRegressor(), 
+                    cat_inputing_algorithm=XGBClassifier(), 
+                    scaler=MinMaxScaler()):
+    
     for column in num_features:
-        impute_missing_values(X_train, column, num_inputing_algorithm)
-        impute_missing_values(X_val, column, num_inputing_algorithm)
-        impute_missing_values(test, column, num_inputing_algorithm)
+        impute_missing_values_with_fallback(X, column, num_inputing_algorithm)
+        impute_missing_values_with_fallback(data_test, column, num_inputing_algorithm)
+    impute_missing_values_with_fallback(X, "Alternative Dispute Resolution", cat_inputing_algorithm)
+    impute_missing_values_with_fallback(data_test, "Alternative Dispute Resolution", cat_inputing_algorithm)
 
-    #Filling cat missing values
-    impute_missing_values(X_train, "Alternative Dispute Resolution", cat_inputing_algorithm)
-    impute_missing_values(X_val, "Alternative Dispute Resolution", cat_inputing_algorithm)
-    impute_missing_values(test, "Alternative Dispute Resolution", cat_inputing_algorithm)
+    # Etapa 2: Remoção de inconsistências
+    inconsistent = X[(X['Age at Injury'] > 80) | (X["Age at Injury"] < 16)].index
+    X.drop(inconsistent, inplace=True)
+    y.drop(inconsistent, inplace=True)
 
-    # Removing inconsistencies on the train
-    inconsistent = X_train[(X_train['Age at Injury'] > 80) | (X_train["Age at Injury"] < 16)].index
-    X_train.drop(inconsistent, inplace=True)
-    y_train.drop(inconsistent, inplace=True)
+    # Etapa 3: Tratamento de outliers
+    for column in num_features:
+        handle_outliers(X, column)
+        handle_outliers(data_test, column)
+
+    # Etapa 4: Reimputação Após Outliers
+    for column in num_features:
+        impute_missing_values_with_fallback(X, column, num_inputing_algorithm)
+        impute_missing_values_with_fallback(data_test, column, num_inputing_algorithm)
+
+    # Etapa 5: Escalonamento
+    for column in num_features:
+        # Diagnóstico antes do escalonamento
+        if X[column].isnull().sum() > 0:
+            impute_missing_values_with_fallback(X, column, num_inputing_algorithm)
+        scale_numerical(column, X, data_test, scaler)
 
     # Creating an ordinal variable
     for num_feature in num_features:
-        categorical_ordinal_encode(X_train, X_val,num_feature)
-        categorical_ordinal_encode(X_train, test,num_feature)
+        categorical_ordinal_encode(X, data_test,num_feature)
 
     # Categorical Prop Encoding
     for cat_feature in cat_features:
-        categorical_prop_encode(X_train, X_val, cat_feature)
-        categorical_prop_encode(X_train, test, cat_feature)
+        categorical_prop_encode(X, data_test, cat_feature)
     
     # Fitting the model
-    model.fit(X_train, y_train)
-
-    # Veryfing if the model is performing as expected
-    pred_val = model.predict(X_val)
-    print(f1_score(y_val, pred_val, average='macro'))
+    model.fit(X, y)
 
     # Using the model to make prediction on the test dataset
-    pred_test = model.predict(test)
+    pred_test = model.predict(data_test)
 
     # Inversing the encoding of our target variable 
     pred_test = le.inverse_transform(pred_test)
