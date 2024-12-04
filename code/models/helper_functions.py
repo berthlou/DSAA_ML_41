@@ -130,15 +130,15 @@ def cv_scores(model, X, y, num_features, cat_features, num_imputing_algorithm= X
         X_train, X_val = X.iloc[train_index], X.iloc[test_index]
         y_train, y_val = y.iloc[train_index], y.iloc[test_index]
 
-
         #Filling num missing values
         for column in num_features:
             impute_missing_values(X_train, column, num_imputing_algorithm)
             impute_missing_values(X_val, column, num_imputing_algorithm)
 
-        #Filling cat missing values
-        impute_missing_values(X_train, "Alternative Dispute Resolution", cat_imputing_algorithm)
-        impute_missing_values(X_val, "Alternative Dispute Resolution", cat_imputing_algorithm)
+        for column in cat_features:
+            #Filling cat missing values
+            impute_missing_values(X_train, column, cat_imputing_algorithm)
+            impute_missing_values(X_val, column, cat_imputing_algorithm)
 
         # Removing inconsistencies on the train
         inconsistent = X_train[(X_train['Age at Injury'] > 80) | (X_train["Age at Injury"] < 16)].index
