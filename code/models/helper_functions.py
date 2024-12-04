@@ -108,11 +108,18 @@ def handle_outliers(data, target_column):
     
     return data
 
-# Scaling function
 def scale_numerical(column, X_train, X_val, scaler):
-    # Ajusta a escala da coluna numérica convertendo-a para 2D
-    X_train[column] = pd.DataFrame(scaler.fit_transform(X_train[[column]]))
-    X_val[column] = pd.DataFrame(scaler.transform(X_val[[column]]))
+    # Certifique-se de que a coluna é numérica
+    if not pd.api.types.is_numeric_dtype(X_train[column]):
+        print(f"A coluna '{column}' não é numérica e será ignorada.")
+        return
+
+    # Escalona os dados e substitui os valores na coluna
+    try:
+        X_train[column] = scaler.fit_transform(X_train[[column]].values.reshape(-1, 1))
+        X_val[column] = scaler.transform(X_val[[column]].values.reshape(-1, 1))
+    except ValueError as e:
+        print(f"Erro ao escalonar a coluna '{column}': {e}")
 
 
 # Ordinal encoder function
@@ -281,9 +288,9 @@ def test_prediction(model, X, y, num_features, cat_features, data_test,
             impute_missing_values_with_fallback(X, column, num_inputing_algorithm)
         scale_numerical(column, X, data_test, scaler)
 
-    # Creating an ordinal variable
+    """# Creating an ordinal variable
     for num_feature in num_features:
-        categorical_ordinal_encode(X, data_test,num_feature)
+        categorical_ordinal_encode(X, data_test,num_feature)"""
 
     # Categorical Prop Encoding
     for cat_feature in cat_features:
